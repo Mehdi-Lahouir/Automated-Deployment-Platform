@@ -7,6 +7,7 @@ htmlcov/
 .venv/
 .env
 k8s/*.env
+backups/
 *.db
 .idea/
 .vscode/

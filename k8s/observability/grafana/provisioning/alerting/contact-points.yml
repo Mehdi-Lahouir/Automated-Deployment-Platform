@@ -1,0 +1,21 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Local webhook inbox
+    receivers:
+      - uid: local-webhook-inbox
+        type: webhook
+        disableResolveMessage: false
+        settings:
+          url: http://webhook-inbox:8080/11111111-2222-3333-4444-555555555555/grafana
+          httpMethod: POST
+          maxAlerts: 0
+
+policies:
+  - orgId: 1
+    receiver: Local webhook inbox
+    group_by: ["grafana_folder", "alertname"]
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h

@@ -1,0 +1,212 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: task-manager
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: task-manager
+  labels:
+    backup.task-manager/backend: local
+spec:
+  schedule: "0 2 * * *"
+  timeZone: Europe/Paris
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: backup-agent
+            backup.task-manager/mode: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            runAsNonRoot: true
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup-agent
+              image: backup-agent:local
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: MODE
+                  value: backup
+                - name: PGHOST
+                  value: postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: POSTGRES_USER
+                - name: PGDATABASE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: POSTGRES_DB
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: POSTGRES_PASSWORD
+                - name: RESTIC_REPOSITORY
+                  value: /repository
+                - name: RESTIC_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-secrets
+                      key: RESTIC_PASSWORD
+                - name: BACKUP_HOST
+                  value: kubernetes
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: repository
+                  mountPath: /repository
+                - name: work
+                  mountPath: /work
+                - name: restore
+                  mountPath: /restore
+          volumes:
+            - name: repository
+              persistentVolumeClaim:
+                claimName: postgres-backups
+            - name: work
+              emptyDir:
+                sizeLimit: 256Mi
+            - name: restore
+              emptyDir:
+                sizeLimit: 256Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-restore-verification
+  namespace: task-manager
+  labels:
+    backup.task-manager/backend: local
+spec:
+  schedule: "0 0 1 1 *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: backup-agent
+            backup.task-manager/mode: restore
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            runAsNonRoot: true
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup-agent
+              image: backup-agent:local
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: MODE
+                  value: restore
+                - name: PGHOST
+                  value: postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: POSTGRES_USER
+                - name: PGDATABASE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: app-config
+                      key: POSTGRES_DB
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: POSTGRES_PASSWORD
+                - name: RESTIC_REPOSITORY
+                  value: /repository
+                - name: RESTIC_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backup-secrets
+                      key: RESTIC_PASSWORD
+                - name: BACKUP_HOST
+                  value: kubernetes
+                - name: SNAPSHOT_ID
+                  value: latest
+                - name: RESTORE_TARGET_DB
+                  value: tasks_restore_test
+                - name: ALLOW_PRODUCTION_RESTORE
+                  value: "false"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: repository
+                  mountPath: /repository
+                - name: work
+                  mountPath: /work
+                - name: restore
+                  mountPath: /restore
+          volumes:
+            - name: repository
+              persistentVolumeClaim:
+                claimName: postgres-backups
+            - name: work
+              emptyDir:
+                sizeLimit: 256Mi
+            - name: restore
+              emptyDir:
+                sizeLimit: 256Mi

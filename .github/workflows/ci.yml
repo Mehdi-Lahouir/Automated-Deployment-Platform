@@ -22,6 +22,82 @@ jobs:
       - run: ruff format --check .
       - run: pytest
       - run: pip-audit -r requirements.txt
+      - run: shellcheck backup/*.sh
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem scripts/*.ps1 | ForEach-Object {
+            [void][scriptblock]::Create((Get-Content $_.FullName -Raw))
+          }
+      - name: Validate Compose configuration
+        env:
+          POSTGRES_PASSWORD: validation-only-password
+          APP_API_KEY: validation-only-api-key-32-characters
+          GRAFANA_ADMIN_PASSWORD: validation-only-password
+          RESTIC_PASSWORD: validation-only-restic-password
+          MINIO_ROOT_USER: validation-minio
+          MINIO_ROOT_PASSWORD: validation-only-minio-password
+        run: docker compose --profile backup-local --profile backup-s3 config --quiet
+      - name: Validate Alloy configurations
+        run: |
+          docker run --rm \
+            -v "$PWD/monitoring/alloy/compose.alloy:/etc/alloy/config.alloy:ro" \
+            grafana/alloy:v1.18.0 validate /etc/alloy/config.alloy
+          docker run --rm \
+            -v "$PWD/k8s/alloy-config.alloy:/etc/alloy/config.alloy:ro" \
+            grafana/alloy:v1.18.0 validate /etc/alloy/config.alloy
+      - name: Validate Loki configuration
+        run: |
+          docker run --rm \
+            -v "$PWD/k8s/observability/loki.yml:/etc/loki/loki.yml:ro" \
+            grafana/loki:3.7.0 \
+            -verify-config=true -config.file=/etc/loki/loki.yml
+      - name: Render Kubernetes manifests
+        run: |
+          kubectl kustomize k8s >/dev/null
+          kubectl kustomize k8s-overlays/backup-s3 >/dev/null
+      - name: Observability smoke test
+        env:
+          POSTGRES_PASSWORD: validation-only-password
+          APP_API_KEY: validation-only-api-key-32-characters
+          GRAFANA_ADMIN_PASSWORD: validation-only-password
+        run: |
+          docker compose up -d --build \
+            db api prometheus loki docker-socket-proxy alloy webhook-inbox grafana
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/health/ready >/dev/null &&
+               curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent \
+            -H 'X-Request-ID: ci-observability-smoke' \
+            http://127.0.0.1:8000/health/live >/dev/null
+          for attempt in $(seq 1 30); do
+            logs="$(docker run --rm --network task-manager_default \
+              curlimages/curl:8.14.1 --silent --get \
+              --data-urlencode 'query={log_service="task-api"} |= "ci-observability-smoke"' \
+              http://loki:3100/loki/api/v1/query_range)"
+            if echo "$logs" | grep -q ci-observability-smoke; then
+              break
+            fi
+            sleep 2
+          done
+          echo "$logs" | grep -q ci-observability-smoke
+          curl --fail --silent \
+            --user admin:validation-only-password \
+            http://127.0.0.1:3000/api/v1/provisioning/alert-rules |
+            grep -q task-api-unavailable
+          ! docker compose logs --no-color grafana |
+            grep -Eiq 'failed to provision|error.*provision'
+      - name: Stop observability smoke stack
+        if: always()
+        env:
+          POSTGRES_PASSWORD: validation-only-password
+          APP_API_KEY: validation-only-api-key-32-characters
+          GRAFANA_ADMIN_PASSWORD: validation-only-password
+        run: docker compose down --volumes --remove-orphans
 
   container:
     if: github.event_name == 'push'
@@ -45,6 +121,13 @@ jobs:
           tags: |
             type=sha
             type=raw,value=latest
+      - uses: docker/metadata-action@v5
+        id: backup-meta
+        with:
+          images: ghcr.io/${{ github.repository }}-backup
+          tags: |
+            type=sha
+            type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -63,7 +146,30 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          file: backup/Dockerfile
+          load: true
+          push: false
+          tags: backup-agent:ci
+          labels: ${{ steps.backup-meta.outputs.labels }}
+          cache-from: type=gha
+      - uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: backup-agent:ci
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backup/Dockerfile
+          push: true
+          tags: ${{ steps.backup-meta.outputs.tags }}
+          labels: ${{ steps.backup-meta.outputs.labels }}
           cache-from: type=gha

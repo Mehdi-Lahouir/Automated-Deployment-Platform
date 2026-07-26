@@ -1,6 +1,8 @@
 import hmac
 import os
+import re
 import time
+import uuid
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,7 +10,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, Security, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -16,6 +18,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
+from app.logging_config import configure_logging
 from app.models import Task
 from app.schemas import TaskCreate, TaskResponse, TaskUpdate
 
@@ -25,6 +28,8 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 RATE_LIMIT = int(os.getenv("RATE_LIMIT_PER_MINUTE", "120"))
 RATE_WINDOW_SECONDS = 60
 request_history: dict[str, deque[float]] = defaultdict(deque)
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+logger = configure_logging()
 
 REQUESTS = Counter(
     "http_requests_total",
@@ -44,7 +49,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if len(api_key) < 24:
         raise RuntimeError("APP_API_KEY must be set to a secret value of at least 24 characters")
     Base.metadata.create_all(bind=engine)
+    logger.info("Application started", extra={"event": "application_started"})
     yield
+    logger.info("Application stopped", extra={"event": "application_stopped"})
 
 
 app = FastAPI(
@@ -57,9 +64,23 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+def normalized_route(request: Request) -> str:
+    route = request.scope.get("route")
+    return getattr(route, "path", "unmatched")
+
+
 @app.middleware("http")
 async def record_metrics(request: Request, call_next):
     started = time.perf_counter()
+    supplied_request_id = request.headers.get("X-Request-ID", "")
+    request_id = (
+        supplied_request_id
+        if REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
+        else uuid.uuid4().hex
+    )
+    request.state.request_id = request_id
+    response = None
+    request_failed = False
 
     if request.url.path.startswith("/tasks"):
         client = request.client.host if request.client else "unknown"
@@ -68,20 +89,59 @@ async def record_metrics(request: Request, call_next):
         while history and history[0] <= now - RATE_WINDOW_SECONDS:
             history.popleft()
         if len(history) >= RATE_LIMIT:
-            return Response(
+            response = Response(
                 content='{"detail":"rate limit exceeded"}',
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 media_type="application/json",
                 headers={"Retry-After": str(RATE_WINDOW_SECONDS)},
             )
-        history.append(now)
+        else:
+            history.append(now)
 
-    response = await call_next(request)
-    route = request.scope.get("route")
-    path = getattr(route, "path", request.url.path)
-    REQUESTS.labels(request.method, path, response.status_code).inc()
-    LATENCY.labels(request.method, path).observe(time.perf_counter() - started)
+    try:
+        if response is None:
+            response = await call_next(request)
+    except Exception as exc:
+        path = normalized_route(request)
+        duration = time.perf_counter() - started
+        request_failed = True
+        REQUESTS.labels(request.method, path, 500).inc()
+        LATENCY.labels(request.method, path).observe(duration)
+        logger.error(
+            "Request failed",
+            extra={
+                "event": "request_failed",
+                "request_id": request_id,
+                "method": request.method,
+                "route": path,
+                "status": 500,
+                "duration_ms": round(duration * 1000, 3),
+                "exception_type": type(exc).__name__,
+            },
+        )
+        response = JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "internal server error"},
+        )
 
+    path = normalized_route(request)
+    duration = time.perf_counter() - started
+    if not request_failed:
+        REQUESTS.labels(request.method, path, response.status_code).inc()
+        LATENCY.labels(request.method, path).observe(duration)
+        logger.info(
+            "Request completed",
+            extra={
+                "event": "request_completed",
+                "request_id": request_id,
+                "method": request.method,
+                "route": path,
+                "status": response.status_code,
+                "duration_ms": round(duration * 1000, 3),
+            },
+        )
+
+    response.headers["X-Request-ID"] = request_id
     if request.url.path == "/docs":
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "

@@ -1,3 +1,5 @@
+name: task-manager
+
 services:
   db:
     image: postgres:17-alpine
@@ -57,14 +59,242 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./k8s/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./k8s/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
       - prometheus
+      - loki
+      - webhook-inbox
+
+  loki:
+    image: grafana/loki:3.7.0
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./k8s/observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.4.2
+    environment:
+      CONTAINERS: "1"
+      EVENTS: "1"
+      PING: "1"
+      VERSION: "1"
+      POST: "0"
+      LOG_LEVEL: warning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - logging-control
+    security_opt:
+      - no-new-privileges:true
+
+  alloy:
+    image: grafana/alloy:v1.18.0
+    user: "473:473"
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./monitoring/alloy/compose.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+    networks:
+      - default
+      - logging-control
+    depends_on:
+      - docker-socket-proxy
+      - loki
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  webhook-inbox:
+    image: ghcr.io/tarampampam/webhook-tester:2.3.0
+    environment:
+      AUTO_CREATE_SESSIONS: "true"
+      MAX_REQUESTS: "128"
+      MAX_REQUEST_BODY_SIZE: "1048576"
+      SESSION_TTL: 168h
+      LOG_FORMAT: json
+    ports:
+      - "127.0.0.1:8081:8080"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  backup-local-init:
+    profiles: ["backup-local"]
+    image: alpine:3.22.1
+    command: ["sh", "-c", "chmod 0700 /repository && chown 10001:10001 /repository"]
+    user: "0:0"
+    volumes:
+      - ./backups:/repository
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+
+  backup-local:
+    profiles: ["backup-local"]
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    environment: &backup-environment
+      MODE: backup
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-taskuser}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+      PGDATABASE: ${POSTGRES_DB:-tasks}
+      RESTIC_REPOSITORY: /repository
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+      BACKUP_HOST: compose
+    volumes:
+      - ./backups:/repository
+    depends_on:
+      db:
+        condition: service_healthy
+      backup-local-init:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /work:size=256m,noexec,nosuid
+      - /restore:size=256m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  restore-local:
+    profiles: ["backup-local"]
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    environment:
+      <<: *backup-environment
+      MODE: restore
+      SNAPSHOT_ID: ${SNAPSHOT_ID:-latest}
+      RESTORE_TARGET_DB: ${RESTORE_TARGET_DB:-tasks_restore_test}
+      ALLOW_PRODUCTION_RESTORE: ${ALLOW_PRODUCTION_RESTORE:-false}
+    volumes:
+      - ./backups:/repository
+    depends_on:
+      db:
+        condition: service_healthy
+      backup-local-init:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /work:size=256m,noexec,nosuid
+      - /restore:size=256m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  minio:
+    profiles: ["backup-s3"]
+    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    security_opt:
+      - no-new-privileges:true
+
+  minio-init:
+    profiles: ["backup-s3"]
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        until mc alias set backup http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
+        do sleep 2; done;
+        mc mb --ignore-existing backup/task-manager-backups
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    depends_on:
+      - minio
+
+  backup-s3:
+    profiles: ["backup-s3"]
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    environment:
+      <<: *backup-environment
+      RESTIC_REPOSITORY: s3:http://minio:9000/task-manager-backups
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-}
+      AWS_DEFAULT_REGION: us-east-1
+    depends_on:
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /work:size=256m,noexec,nosuid
+      - /restore:size=256m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  restore-s3:
+    profiles: ["backup-s3"]
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    environment:
+      <<: *backup-environment
+      MODE: restore
+      RESTIC_REPOSITORY: s3:http://minio:9000/task-manager-backups
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-}
+      AWS_DEFAULT_REGION: us-east-1
+      SNAPSHOT_ID: ${SNAPSHOT_ID:-latest}
+      RESTORE_TARGET_DB: ${RESTORE_TARGET_DB:-tasks_restore_test}
+      ALLOW_PRODUCTION_RESTORE: ${ALLOW_PRODUCTION_RESTORE:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /work:size=256m,noexec,nosuid
+      - /restore:size=256m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
 
 volumes:
   postgres_data:
   grafana_data:
+  minio_data:
+  loki_data:
+  alloy_data:
+
+networks:
+  logging-control:
+    internal: true

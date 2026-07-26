@@ -1,0 +1,72 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+discovery.docker "task_manager" {
+  host = "http://docker-socket-proxy:2375"
+}
+
+discovery.relabel "task_manager" {
+  targets = discovery.docker.task_manager.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "task-manager"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_log_stream"]
+    target_label  = "stream"
+  }
+
+  rule {
+    target_label = "environment"
+    replacement  = "compose"
+  }
+}
+
+loki.source.docker "task_manager" {
+  host       = "http://docker-socket-proxy:2375"
+  targets    = discovery.relabel.task_manager.output
+  forward_to = [loki.process.task_manager.receiver]
+}
+
+loki.process "task_manager" {
+  stage.json {
+    expressions = {
+      level      = "level",
+      event      = "event",
+      log_service = "service",
+    }
+  }
+
+  stage.labels {
+    values = {
+      level       = "",
+      event       = "",
+      log_service = "",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

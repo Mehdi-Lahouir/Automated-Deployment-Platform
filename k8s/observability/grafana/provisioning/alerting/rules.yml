@@ -1,0 +1,233 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: task-manager-reliability
+    folder: Student Project
+    interval: 1m
+    rules:
+      - uid: task-api-unavailable
+        title: API unavailable
+        condition: C
+        for: 2m
+        noDataState: Alerting
+        execErrState: Error
+        annotations:
+          summary: The Task Manager API has no healthy Prometheus target.
+          runbook_url: https://github.com/Mehdi-Lahouir/Automated-Deployment-Platform#operations-and-troubleshooting
+        labels:
+          severity: critical
+          service: task-api
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: max(up{job="task-api"})
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+              refId: B
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              type: threshold
+              refId: C
+              conditions:
+                - evaluator: {params: [1], type: lt}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {params: [], type: last}
+                  type: query
+
+      - uid: task-api-high-error-rate
+        title: API 5xx rate above 5 percent
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: More than 5 percent of at least 20 recent requests returned 5xx.
+          runbook_url: https://github.com/Mehdi-Lahouir/Automated-Deployment-Platform#operations-and-troubleshooting
+        labels:
+          severity: warning
+          service: task-api
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: ((sum(increase(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(increase(http_requests_total[5m])), 1)) > bool 0.05) and (sum(increase(http_requests_total[5m])) >= bool 20)
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: {expression: A, reducer: last, type: reduce, refId: B}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              type: threshold
+              refId: C
+              conditions:
+                - evaluator: {params: [0.5], type: gt}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {params: [], type: last}
+                  type: query
+
+      - uid: task-api-high-latency
+        title: API p95 latency above 750 milliseconds
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: API p95 latency has exceeded 750 milliseconds for five minutes.
+          runbook_url: https://github.com/Mehdi-Lahouir/Automated-Deployment-Platform#operations-and-troubleshooting
+        labels:
+          severity: warning
+          service: task-api
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: {expression: A, reducer: last, type: reduce, refId: B}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              type: threshold
+              refId: C
+              conditions:
+                - evaluator: {params: [0.75], type: gt}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {params: [], type: last}
+                  type: query
+
+      - uid: task-api-rate-limit-spike
+        title: API rate-limit spike
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: At least 10 requests were rate limited during the previous five minutes.
+          runbook_url: https://github.com/Mehdi-Lahouir/Automated-Deployment-Platform#operations-and-troubleshooting
+        labels:
+          severity: warning
+          service: task-api
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: sum(increase(http_requests_total{status="429"}[5m]))
+              instant: true
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: {expression: A, reducer: last, type: reduce, refId: B}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              type: threshold
+              refId: C
+              conditions:
+                - evaluator: {params: [10], type: gte}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {params: [], type: last}
+                  type: query
+
+      - uid: task-backup-failed
+        title: Backup or restore failed
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: A backup or restore failure event was recorded in Loki.
+          runbook_url: https://github.com/Mehdi-Lahouir/Automated-Deployment-Platform#recovery-failure-demonstrations
+        labels:
+          severity: critical
+          service: backup-agent
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: loki
+            model:
+              editorMode: code
+              expr: sum(count_over_time({log_service="backup-agent",event=~"backup_failed|restore_failed"}[5m]))
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: {expression: A, reducer: last, type: reduce, refId: B}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              type: threshold
+              refId: C
+              conditions:
+                - evaluator: {params: [0], type: gt}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {params: [], type: last}
+                  type: query
+
+      - uid: task-backup-missing
+        title: No successful backup in 26 hours
+        condition: C
+        for: 0s
+        noDataState: Alerting
+        execErrState: Error
+        annotations:
+          summary: No successful encrypted backup has been observed during the last 26 hours.
+          runbook_url: https://github.com/Mehdi-Lahouir/Automated-Deployment-Platform#encrypted-backups-and-recovery
+        labels:
+          severity: critical
+          service: backup-agent
+        data:
+          - refId: A
+            relativeTimeRange: {from: 93600, to: 0}
+            datasourceUid: loki
+            model:
+              editorMode: code
+              expr: sum(count_over_time({log_service="backup-agent",event="backup_completed"}[26h]))
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: {expression: A, reducer: last, type: reduce, refId: B}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              type: threshold
+              refId: C
+              conditions:
+                - evaluator: {params: [1], type: lt}
+                  operator: {type: and}
+                  query: {params: [C]}
+                  reducer: {params: [], type: last}
+                  type: query

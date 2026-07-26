@@ -1,0 +1,119 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Log volume by service",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{
+        "expr": "sum by (service) (count_over_time({environment=~\"$environment\",service=~\"$service\"}[$__auto]))",
+        "legendFormat": "{{service}}",
+        "refId": "A"
+      }],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Error logs by service",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{
+        "expr": "sum by (service) (count_over_time({environment=~\"$environment\",service=~\"$service\"} | json | level=\"error\" [$__auto]))",
+        "legendFormat": "{{service}}",
+        "refId": "A"
+      }],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Alloy collector up",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(up{job=\"alloy\"})", "refId": "A"}],
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 8}
+    },
+    {
+      "type": "stat",
+      "title": "Successful backups in 26h",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{
+        "expr": "sum(count_over_time({log_service=\"backup-agent\",event=\"backup_completed\"}[26h]))",
+        "queryType": "instant",
+        "refId": "A"
+      }],
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 8}
+    },
+    {
+      "type": "logs",
+      "title": "Live project logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{
+        "expr": "{environment=~\"$environment\",service=~\"$service\"} |~ \"$search\"",
+        "refId": "A"
+      }],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 13}
+    },
+    {
+      "type": "logs",
+      "title": "Request ID lookup",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{
+        "expr": "{log_service=\"task-api\"} | json | request_id=\"$request_id\"",
+        "refId": "A"
+      }],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 25}
+    }
+  ],
+  "schemaVersion": 41,
+  "tags": ["student", "devops", "loki", "logs"],
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "type": "custom",
+        "query": "compose,kubernetes",
+        "current": {"text": "compose", "value": "compose"}
+      },
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "query": "label_values({environment=~\"$environment\"}, service)",
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"text": "All", "value": "$__all"}
+      },
+      {
+        "name": "search",
+        "type": "textbox",
+        "query": "",
+        "current": {"text": "", "value": ""}
+      },
+      {
+        "name": "request_id",
+        "type": "textbox",
+        "query": "",
+        "current": {"text": "", "value": ""}
+      }
+    ]
+  },
+  "time": {"from": "now-30m", "to": "now"},
+  "title": "Task Manager Operations Logs",
+  "uid": "task-manager-logs",
+  "version": 1
+}
