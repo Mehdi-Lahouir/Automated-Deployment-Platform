@@ -1,0 +1,34 @@
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    command: sleep infinity
+    privileged: true
+    environment:
+      DATABASE_URL: postgresql+psycopg://taskuser:taskpass@db:5432/tasks
+      APP_VERSION: devcontainer
+    volumes:
+      - ..:/workspace:cached
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tasks
+      POSTGRES_USER: taskuser
+      POSTGRES_PASSWORD: taskpass
+    volumes:
+      - devcontainer_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskuser -d tasks"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  devcontainer_postgres_data:
+

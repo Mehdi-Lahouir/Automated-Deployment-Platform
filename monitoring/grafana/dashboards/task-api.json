@@ -1,0 +1,56 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "API Up",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [{"expr": "up{job=\"task-api\"}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests per second",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [{"expr": "sum(rate(http_requests_total[1m]))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 9, "x": 6, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "95th percentile latency",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 9, "x": 15, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx errors per second",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [{"expr": "sum(rate(http_requests_total{status=~\"5..\"}[1m]))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by endpoint",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [{"expr": "sum by (path) (rate(http_requests_total[1m]))", "legendFormat": "{{path}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ],
+  "schemaVersion": 41,
+  "tags": ["student", "devops", "fastapi"],
+  "templating": {
+    "list": [{
+      "name": "DS_PROMETHEUS",
+      "type": "datasource",
+      "query": "prometheus",
+      "current": {"text": "Prometheus", "value": "Prometheus"}
+    }]
+  },
+  "time": {"from": "now-30m", "to": "now"},
+  "title": "Task Manager API",
+  "uid": "task-manager-api",
+  "version": 1
+}
+
