@@ -6,4 +6,4 @@ resources:
   - postgres.yaml
   - api.yaml
   - monitoring.yaml
-
+  - network-policies.yaml

@@ -1,0 +1,236 @@
+.metrics-hero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  padding: 72px 0 48px;
+}
+
+.metrics-hero h1 {
+  font-size: clamp(2.8rem, 6vw, 5rem);
+}
+
+.refresh-panel {
+  display: grid;
+  min-width: 220px;
+  gap: 7px;
+  padding: 17px 18px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.refresh-panel span,
+.refresh-panel strong {
+  font-size: 0.72rem;
+}
+
+.refresh-panel span {
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.refresh-panel button {
+  width: fit-content;
+  margin-top: 5px;
+  padding: 0;
+  border: 0;
+  color: var(--cyan);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.metric-card {
+  position: relative;
+  min-height: 152px;
+  overflow: hidden;
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.metric-card::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: var(--card-accent);
+  content: "";
+  filter: blur(55px);
+  opacity: 0.16;
+  transform: translate(35%, -35%);
+}
+
+.metric-label,
+.metric-card strong,
+.metric-card small {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 0.73rem;
+  letter-spacing: 0.03em;
+}
+
+.metric-card strong {
+  margin: 14px 0 9px;
+  font-size: 2rem;
+  font-weight: 630;
+  letter-spacing: -0.04em;
+}
+
+.metric-card small {
+  color: #667287;
+  font-size: 0.68rem;
+}
+
+.accent-blue {
+  --card-accent: #5087ff;
+}
+
+.accent-green {
+  --card-accent: #5ce4a2;
+}
+
+.accent-cyan {
+  --card-accent: #52e5d8;
+}
+
+.accent-violet {
+  --card-accent: #9d7bff;
+}
+
+.accent-orange {
+  --card-accent: #ffb85c;
+}
+
+.accent-pink {
+  --card-accent: #ff7385;
+}
+
+.telemetry-panel {
+  overflow: hidden;
+  margin-bottom: 36px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  padding: 28px 30px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-heading .section-label {
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+
+.raw-link {
+  color: var(--cyan);
+  font-size: 0.74rem;
+  text-decoration: none;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+th,
+td {
+  padding: 15px 30px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+th {
+  color: #67758b;
+  font-size: 0.65rem;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+td {
+  color: var(--muted);
+}
+
+td:first-child {
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.status-code {
+  display: inline-block;
+  min-width: 42px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: var(--success);
+  background: rgba(92, 228, 162, 0.08);
+  text-align: center;
+}
+
+.status-code.error {
+  color: var(--danger);
+  background: rgba(255, 115, 133, 0.08);
+}
+
+@media (max-width: 760px) {
+  .metrics-hero {
+    display: block;
+    padding: 55px 0 38px;
+  }
+
+  .refresh-panel {
+    margin-top: 28px;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .panel-heading,
+  th,
+  td {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-card {
+    min-height: 128px;
+  }
+}

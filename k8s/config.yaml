@@ -7,14 +7,3 @@ data:
   APP_VERSION: kubernetes
   POSTGRES_DB: tasks
   POSTGRES_USER: taskuser
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: app-secrets
-  namespace: task-manager
-type: Opaque
-stringData:
-  POSTGRES_PASSWORD: taskpass
-  DATABASE_URL: postgresql+psycopg://taskuser:taskpass@postgres:5432/tasks
-

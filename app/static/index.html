@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      name="description"
+      content="A production-style task manager demonstrating a complete DevOps delivery platform."
+    >
+    <title>TaskFlow | Operations Dashboard</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="TaskFlow home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="m5 12 4 4L19 6"></path>
+          </svg>
+        </span>
+        <span>
+          <strong>TaskFlow</strong>
+          <small>Operations workspace</small>
+        </span>
+      </a>
+
+      <nav aria-label="Developer resources">
+        <a href="/docs">API Docs</a>
+        <a href="/metrics-view">Metrics</a>
+        <button id="logout-button" class="nav-button" type="button" hidden>Lock</button>
+        <span class="service-status">
+          <span class="status-dot" aria-hidden="true"></span>
+          API online
+        </span>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Deploy. Observe. Improve.</p>
+          <h1 id="page-title">Turn plans into <span>progress.</span></h1>
+          <p class="hero-copy">
+            A focused task workspace running on the same production-style API,
+            monitoring, and deployment stack you built.
+          </p>
+        </div>
+        <div class="hero-badge" aria-label="Platform status">
+          <span>Platform</span>
+          <strong>All systems operational</strong>
+        </div>
+      </section>
+
+      <section class="stats" aria-label="Task overview">
+        <article class="stat-card">
+          <div class="stat-icon total" aria-hidden="true">01</div>
+          <div>
+            <span>Total tasks</span>
+            <strong id="total-count">—</strong>
+          </div>
+        </article>
+        <article class="stat-card">
+          <div class="stat-icon pending" aria-hidden="true">02</div>
+          <div>
+            <span>In progress</span>
+            <strong id="pending-count">—</strong>
+          </div>
+        </article>
+        <article class="stat-card">
+          <div class="stat-icon complete" aria-hidden="true">03</div>
+          <div>
+            <span>Completed</span>
+            <strong id="completed-count">—</strong>
+          </div>
+        </article>
+      </section>
+
+      <section class="workspace" aria-labelledby="workspace-title">
+        <div class="workspace-header">
+          <div>
+            <p class="section-label">Your workspace</p>
+            <h2 id="workspace-title">Today’s tasks</h2>
+          </div>
+          <span id="task-summary" class="task-summary">Loading tasks…</span>
+        </div>
+
+        <form id="task-form" class="task-form">
+          <label class="sr-only" for="task-title">New task title</label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+            <input
+              id="task-title"
+              name="title"
+              type="text"
+              maxlength="200"
+              autocomplete="off"
+              placeholder="What needs to get done?"
+              required
+            >
+          </div>
+          <button id="add-button" type="submit">
+            <span>Add task</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 18 6-6-6-6"></path>
+            </svg>
+          </button>
+        </form>
+
+        <div id="loading-state" class="state-panel">
+          <span class="spinner" aria-hidden="true"></span>
+          <p>Syncing your workspace…</p>
+        </div>
+
+        <div id="error-state" class="state-panel error-state" hidden>
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>We couldn’t load your tasks.</strong>
+            <p>Check that the API and database are running, then try again.</p>
+          </div>
+          <button id="retry-button" type="button">Retry</button>
+        </div>
+
+        <div id="empty-state" class="state-panel empty-state" hidden>
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M9 11 12 14 22 4"></path>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+          </div>
+          <strong>Your queue is clear</strong>
+          <p>Add your first task above and start building momentum.</p>
+        </div>
+
+        <ul id="task-list" class="task-list" aria-live="polite"></ul>
+      </section>
+    </main>
+
+    <footer>
+      <p>Built to demonstrate modern DevOps delivery.</p>
+      <div>
+        <a href="/health/ready">Health check</a>
+        <span aria-hidden="true">•</span>
+        <a href="/docs">OpenAPI</a>
+      </div>
+    </footer>
+
+    <div id="auth-overlay" class="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <form id="auth-form" class="auth-card">
+        <span class="brand-mark auth-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="m5 12 4 4L19 6"></path>
+          </svg>
+        </span>
+        <p class="eyebrow">Protected workspace</p>
+        <h2 id="auth-title">Unlock TaskFlow</h2>
+        <p>Enter the API key configured for this environment. It stays in this browser tab only.</p>
+        <label for="api-key">API key</label>
+        <input
+          id="api-key"
+          name="api-key"
+          type="password"
+          minlength="24"
+          autocomplete="off"
+          placeholder="Paste your API key"
+          required
+        >
+        <p id="auth-error" class="auth-error" role="alert" hidden>That API key was not accepted.</p>
+        <button type="submit">Unlock workspace</button>
+      </form>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>

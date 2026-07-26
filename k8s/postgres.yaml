@@ -24,6 +24,14 @@ spec:
       labels:
         app: postgres
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: postgres:17-alpine
@@ -46,13 +54,22 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+            - name: runtime
+              mountPath: /var/run/postgresql
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: postgres-data
+        - name: runtime
+          emptyDir:
+            sizeLimit: 16Mi
 ---
 apiVersion: v1
 kind: Service
@@ -65,4 +82,3 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
-

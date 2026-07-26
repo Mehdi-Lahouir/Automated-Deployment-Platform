@@ -2,7 +2,8 @@
 
 A portfolio-sized DevOps project: a FastAPI task manager backed by PostgreSQL,
 packaged with Docker, tested and scanned in GitHub Actions, deployable to local
-Kubernetes, and observable with Prometheus and Grafana.
+Kubernetes, and observable with Prometheus and Grafana. A responsive web dashboard
+provides a polished interface for managing tasks and demonstrating the platform.
 
 ## Architecture
 
@@ -11,7 +12,8 @@ flowchart LR
     Developer -->|push| GitHub
     GitHub -->|lint, test, audit| CI[GitHub Actions]
     CI -->|build and scan| Image[GHCR image]
-    User --> API[FastAPI replicas]
+    User --> UI[Web dashboard]
+    UI --> API[FastAPI replicas]
     API --> DB[(PostgreSQL)]
     Prometheus -->|scrape /metrics| API
     Grafana --> Prometheus
@@ -23,6 +25,7 @@ flowchart LR
 ## What this demonstrates
 
 - REST API, database persistence, health checks, and Prometheus metrics
+- Responsive task dashboard served from the same production image
 - Reproducible local environment with Docker Compose
 - CI quality gates, dependency audit, container scan, and GHCR publishing
 - Kubernetes rolling deployments, probes, resource limits, Secrets, ConfigMaps,
@@ -35,29 +38,39 @@ Requirements: Docker Desktop with Linux containers.
 
 ```powershell
 Copy-Item .env.example .env
+# Replace every "replace-with-..." value in .env before continuing.
 docker compose up --build -d
 docker compose ps
 ```
 
 Open:
 
+- Task dashboard: http://localhost:8000
 - API documentation: http://localhost:8000/docs
 - Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (`admin` / `admin` by default)
+- Human-friendly API metrics: http://localhost:8000/metrics-view
+- Grafana: http://localhost:3000 (use the password configured in `.env`)
+
+The dashboard asks for `APP_API_KEY` when it opens. The key is retained only in that
+browser tab. Compose binds every published port to `127.0.0.1`, so the services are
+not exposed to other devices on your network.
 
 Try the API:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri http://localhost:8000/tasks `
+$headers = @{ "X-API-Key" = (Get-Content .env |
+  Where-Object { $_ -like "APP_API_KEY=*" } |
+  ForEach-Object { $_.Substring("APP_API_KEY=".Length) }) }
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/tasks -Headers $headers `
   -ContentType application/json -Body '{"title":"Learn Docker"}'
-Invoke-RestMethod http://localhost:8000/tasks
+Invoke-RestMethod http://localhost:8000/tasks -Headers $headers
 Invoke-RestMethod http://localhost:8000/health/ready
 ```
 
 Generate traffic so the dashboard becomes interesting:
 
 ```powershell
-1..100 | ForEach-Object { Invoke-RestMethod http://localhost:8000/tasks }
+1..100 | ForEach-Object { Invoke-RestMethod http://localhost:8000/tasks -Headers $headers }
 ```
 
 Stop the environment with `docker compose down`. Add `-v` only when you intentionally
@@ -82,7 +95,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 The database connection is already configured through `DATABASE_URL`. Port 8000 is
-forwarded automatically, so open the API documentation from the VS Code Ports panel.
+forwarded automatically, so open the task dashboard from the VS Code Ports panel.
+Use `devcontainer-only-api-key-32-characters` to unlock this local development
+workspace.
 The container also runs its own Docker daemon, allowing `docker compose` and the
 `scripts/deploy-kind.ps1` workflow's equivalent commands to run without depending on
 the host Docker socket:
@@ -105,9 +120,12 @@ Python 3.11+ is supported. Tests use SQLite, so PostgreSQL is not required.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
+$env:APP_API_KEY = "generate-a-private-key-at-least-32-characters"
+$env:DATABASE_URL = "sqlite:///./tasks.db"
 ruff check .
 ruff format --check .
 pytest
+uvicorn app.main:app --reload
 ```
 
 ## Local Kubernetes with kind
@@ -115,6 +133,9 @@ pytest
 Install `kind`, and make sure Docker Desktop is running:
 
 ```powershell
+Copy-Item k8s/app-secrets.env.example k8s/app-secrets.env
+Copy-Item k8s/monitoring-secrets.env.example k8s/monitoring-secrets.env
+# Replace every placeholder in both ignored files with a strong random value.
 .\scripts\deploy-kind.ps1
 kubectl get all -n task-manager
 kubectl port-forward service/task-api 8000:8000 -n task-manager
@@ -158,8 +179,8 @@ Pull requests run linting, formatting checks, tests with coverage, and `pip-audi
 A push to `main` additionally:
 
 1. Builds the multi-stage, non-root container.
-2. Publishes `latest` and commit-SHA tags to GitHub Container Registry.
-3. Scans the published image with Trivy and fails on fixable high/critical findings.
+2. Scans the local image with Trivy and blocks fixable high/critical findings.
+3. Publishes `latest` and commit-SHA tags only after the scan passes.
 
 Repository packages are published as `ghcr.io/<owner>/<repository>`. The workflow
 uses the built-in `GITHUB_TOKEN`; no personal token is required.
@@ -169,6 +190,7 @@ uses the built-in `GITHUB_TOKEN`; no personal token is required.
 | Symptom | Check | Recovery |
 |---|---|---|
 | API is not ready | `docker compose logs api db` | Confirm `DATABASE_URL`, then restart |
+| Dashboard rejects the key | Check `APP_API_KEY` in the active environment | Restart the API after changing it |
 | PostgreSQL will not start | `docker compose logs db` | Check credentials and port usage |
 | Kubernetes pod pending | `kubectl describe pod -n task-manager <pod>` | Check PVC and available resources |
 | `ImagePullBackOff` | `kubectl describe pod -n task-manager <pod>` | Load local image into kind or fix registry access |
@@ -180,15 +202,35 @@ Health endpoints have separate purposes:
 - `/health/live`: confirms that the process is running.
 - `/health/ready`: checks database connectivity before accepting traffic.
 
+The browser-facing routes are:
+
+- `/`: responsive task dashboard.
+- `/api/info`: protected service metadata.
+- `/docs`: interactive OpenAPI documentation.
+- `/metrics-view`: styled, auto-refreshing operational metrics.
+- `/metrics`: raw Prometheus exposition consumed by Prometheus.
+
 ## Security notes
 
-The checked-in Kubernetes password is deliberately a local-development example.
-For a real environment, create the Secret out of band or use a secret manager, use
-TLS, restrict network access, pin images by digest, and change Grafana credentials.
+- Task data requires an `X-API-Key`; `/docs` exposes an **Authorize** button for it.
+- Secrets are supplied through ignored local files and are not committed to Git.
+- Responses include CSP, clickjacking, MIME-sniffing, referrer, and permissions headers.
+- Task routes are rate limited and task-list responses are capped at 100 records.
+- Compose ports listen only on localhost, and the API container is read-only/non-root.
+- Kubernetes disables service account mounts, restricts container privileges, and
+  applies default-deny NetworkPolicies with explicit service-to-service allowances.
+- CI uses least-privilege token permissions and scans the image before publishing it.
+
+The API key is shared access control, not full user authentication. For an
+internet-facing deployment, additionally use TLS at an ingress or reverse proxy,
+store secrets in a managed secret service, pin images and Actions by digest/SHA,
+replace the in-process rate limiter with a distributed gateway limiter, and implement
+individual user identities with audited authorization.
 
 ## Portfolio presentation
 
-Capture screenshots of the GitHub Actions run, API docs, Kubernetes pods, Prometheus
-target, Grafana dashboard, failed rollout, and successful rollback. A two-minute demo
-can follow this story: push code → watch CI → create a task → inspect metrics → deploy
-a broken image → show zero downtime → roll back.
+Capture screenshots of the task dashboard, GitHub Actions run, API docs, Kubernetes
+pods, Prometheus target, Grafana dashboard, failed rollout, and successful rollback.
+A two-minute demo can follow this story: push code → watch CI → create and complete a
+task in the dashboard → inspect metrics → deploy a broken image → show zero downtime
+→ roll back.

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Human-friendly operational metrics for TaskFlow.">
+    <title>TaskFlow | Metrics</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/metrics.css">
+    <script src="/static/metrics.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Return to TaskFlow">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg>
+        </span>
+        <span>
+          <strong>TaskFlow</strong>
+          <small>Operations workspace</small>
+        </span>
+      </a>
+      <nav aria-label="Metrics navigation">
+        <a href="/">Tasks</a>
+        <a href="/docs">API Docs</a>
+        <span class="service-status">
+          <span id="status-dot" class="status-dot" aria-hidden="true"></span>
+          <span id="status-label">Collecting</span>
+        </span>
+      </nav>
+    </header>
+
+    <main>
+      <section class="metrics-hero" aria-labelledby="metrics-title">
+        <div>
+          <p class="eyebrow">Live telemetry</p>
+          <h1 id="metrics-title">System <span>pulse.</span></h1>
+          <p class="hero-copy">
+            A human-friendly view of the Prometheus telemetry emitted by this API.
+            Values refresh automatically every five seconds.
+          </p>
+        </div>
+        <div class="refresh-panel">
+          <span>Last updated</span>
+          <strong id="last-updated">Waiting for data…</strong>
+          <button id="refresh-button" type="button">Refresh now</button>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="Key metrics">
+        <article class="metric-card accent-blue">
+          <span class="metric-label">HTTP requests</span>
+          <strong id="request-count">—</strong>
+          <small>Observed since process start</small>
+        </article>
+        <article class="metric-card accent-green">
+          <span class="metric-label">Successful responses</span>
+          <strong id="success-rate">—</strong>
+          <small>Responses below status 400</small>
+        </article>
+        <article class="metric-card accent-cyan">
+          <span class="metric-label">Average latency</span>
+          <strong id="average-latency">—</strong>
+          <small>Across instrumented requests</small>
+        </article>
+        <article class="metric-card accent-violet">
+          <span class="metric-label">Memory usage</span>
+          <strong id="memory-usage">—</strong>
+          <small>Resident process memory</small>
+        </article>
+        <article class="metric-card accent-orange">
+          <span class="metric-label">CPU time</span>
+          <strong id="cpu-time">—</strong>
+          <small>Total process CPU seconds</small>
+        </article>
+        <article class="metric-card accent-pink">
+          <span class="metric-label">Process uptime</span>
+          <strong id="process-uptime">—</strong>
+          <small>Time since API startup</small>
+        </article>
+      </section>
+
+      <section class="telemetry-panel" aria-labelledby="endpoints-title">
+        <div class="panel-heading">
+          <div>
+            <p class="section-label">Traffic breakdown</p>
+            <h2 id="endpoints-title">Requests by endpoint</h2>
+          </div>
+          <a class="raw-link" href="/metrics">Open raw metrics</a>
+        </div>
+
+        <div id="metrics-loading" class="state-panel">
+          <span class="spinner" aria-hidden="true"></span>
+          <p>Reading Prometheus metrics…</p>
+        </div>
+
+        <div id="metrics-error" class="state-panel error-state" hidden>
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>Metrics are temporarily unavailable.</strong>
+            <p>Confirm the API is running and retry the request.</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="endpoint-table" hidden>
+            <thead>
+              <tr>
+                <th scope="col">Endpoint</th>
+                <th scope="col">Method</th>
+                <th scope="col">Status</th>
+                <th scope="col">Requests</th>
+              </tr>
+            </thead>
+            <tbody id="endpoint-rows"></tbody>
+          </table>
+        </div>
+
+        <div id="metrics-empty" class="state-panel empty-state" hidden>
+          <strong>No HTTP traffic recorded yet</strong>
+          <p>Visit the task dashboard or API documentation, then refresh this page.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Prometheus exposition remains available at <a href="/metrics">/metrics</a>.</p>
+      <div><a href="/">Task dashboard</a><span aria-hidden="true">•</span><a href="/docs">OpenAPI</a></div>
+    </footer>
+  </body>
+</html>
