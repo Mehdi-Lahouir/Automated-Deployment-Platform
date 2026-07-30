@@ -1,5 +1,6 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-q --cov=app --cov-report=term-missing --cov-fail-under=85"
 
 [tool.ruff]
@@ -8,4 +9,3 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
-
