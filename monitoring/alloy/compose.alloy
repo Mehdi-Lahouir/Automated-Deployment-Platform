@@ -4,7 +4,8 @@ logging {
 }
 
 discovery.docker "task_manager" {
-  host = "http://docker-socket-proxy:2375"
+  host             = "http://docker-socket-proxy:2375"
+  refresh_interval = "5s"
 }
 
 discovery.relabel "task_manager" {
@@ -40,9 +41,10 @@ discovery.relabel "task_manager" {
 }
 
 loki.source.docker "task_manager" {
-  host       = "http://docker-socket-proxy:2375"
-  targets    = discovery.relabel.task_manager.output
-  forward_to = [loki.process.task_manager.receiver]
+  host             = "http://docker-socket-proxy:2375"
+  targets          = discovery.relabel.task_manager.output
+  refresh_interval = "5s"
+  forward_to       = [loki.process.task_manager.receiver]
 }
 
 loki.process "task_manager" {

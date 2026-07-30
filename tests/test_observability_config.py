@@ -14,6 +14,7 @@ def test_loki_retention_and_alloy_collectors_are_configured():
     assert loki["limits_config"]["retention_period"] == "168h"
     assert "loki.source.docker" in compose_alloy
     assert "docker-socket-proxy:2375" in compose_alloy
+    assert compose_alloy.count('refresh_interval = "5s"') == 2
     assert "loki.source.kubernetes" in kubernetes_alloy
     assert 'names = ["task-manager"]' in kubernetes_alloy
 
