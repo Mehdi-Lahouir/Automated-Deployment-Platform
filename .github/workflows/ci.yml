@@ -65,9 +65,21 @@ jobs:
           POSTGRES_PASSWORD: validation-only-password
           APP_API_KEY: validation-only-api-key-32-characters
           GRAFANA_ADMIN_PASSWORD: validation-only-password
+          COMPOSE_PARALLEL_LIMIT: 2
         run: |
-          docker compose up -d --build \
-            db api prometheus loki docker-socket-proxy alloy webhook-inbox grafana
+          for attempt in 1 2 3; do
+            if docker compose up -d --build \
+              db api prometheus loki docker-socket-proxy alloy webhook-inbox grafana; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              docker compose ps --all
+              docker compose logs --no-color
+              exit 1
+            fi
+            echo "Compose startup failed (attempt $attempt/3); retrying in 10 seconds."
+            sleep 10
+          done
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:8000/health/ready >/dev/null &&
                curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null; then
@@ -75,6 +87,12 @@ jobs:
             fi
             sleep 2
           done
+          docker compose ps --all
+          if ! curl --fail --silent http://127.0.0.1:8000/health/ready >/dev/null ||
+             ! curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null; then
+            docker compose logs --no-color
+            exit 1
+          fi
           curl --fail --silent \
             -H 'X-Request-ID: ci-observability-smoke' \
             http://127.0.0.1:8000/health/live >/dev/null
