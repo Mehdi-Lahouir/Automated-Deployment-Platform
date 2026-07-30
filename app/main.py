@@ -17,7 +17,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.database import Base, engine, get_db
+from app.database import get_db
 from app.logging_config import configure_logging
 from app.models import Task
 from app.schemas import TaskCreate, TaskResponse, TaskUpdate
@@ -48,7 +48,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     api_key = os.getenv("APP_API_KEY", "")
     if len(api_key) < 24:
         raise RuntimeError("APP_API_KEY must be set to a secret value of at least 24 characters")
-    Base.metadata.create_all(bind=engine)
     logger.info("Application started", extra={"event": "application_started"})
     yield
     logger.info("Application stopped", extra={"event": "application_stopped"})
@@ -238,8 +237,15 @@ def list_tasks(
     db: DbSession,
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
+    completed: Annotated[bool | None, Query()] = None,
+    search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
 ) -> list[Task]:
-    query = select(Task).order_by(Task.id).offset(offset).limit(limit)
+    query = select(Task)
+    if completed is not None:
+        query = query.where(Task.completed == completed)
+    if search is not None:
+        query = query.where(Task.title.contains(search.strip(), autoescape=True))
+    query = query.order_by(Task.id).offset(offset).limit(limit)
     return list(db.scalars(query).all())
 
 

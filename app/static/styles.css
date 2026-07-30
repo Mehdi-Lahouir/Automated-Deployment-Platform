@@ -344,6 +344,32 @@ h2 {
   font-size: 0.77rem;
 }
 
+.task-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 10px;
+  padding: 0 30px 14px;
+}
+
+.task-filters input,
+.task-filters select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  color: var(--text);
+  background: rgba(5, 10, 20, 0.48);
+  font: inherit;
+}
+
+.task-filters input:focus,
+.task-filters select:focus {
+  border-color: var(--line-bright);
+  box-shadow: 0 0 0 3px rgba(82, 229, 216, 0.08);
+}
+
 .task-form {
   display: flex;
   gap: 10px;
@@ -810,6 +836,7 @@ footer div {
   }
 
   .workspace-header,
+  .task-filters,
   .task-form,
   .task-item {
     padding-right: 20px;
@@ -818,6 +845,10 @@ footer div {
 
   .task-form {
     align-items: stretch;
+  }
+
+  .task-filters {
+    grid-template-columns: 1fr;
   }
 
   .task-form > button {

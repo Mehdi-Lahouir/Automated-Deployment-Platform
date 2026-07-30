@@ -34,6 +34,7 @@ flowchart LR
 ## What this demonstrates
 
 - REST API, database persistence, health checks, and Prometheus metrics
+- Versioned Alembic database migrations with safe multi-replica startup
 - Responsive task dashboard served from the same production image
 - Reproducible local environment with Docker Compose
 - CI quality gates, dependency audit, container scan, and GHCR publishing
@@ -41,6 +42,18 @@ flowchart LR
   persistent storage, and rollback
 - Centralized logs, request correlation, Grafana dashboards, alerts, and local delivery
 - Encrypted PostgreSQL backups, retention, restore verification, and local/S3 storage
+
+## v1.0 guides
+
+- [Architecture and demo walkthrough](docs/v1-demo-walkthrough.md): a concise,
+  ten-minute product-to-recovery presentation.
+- [Production readiness](docs/production-readiness.md): capacity targets, TLS and
+  secret controls, cloud deployment choices, disaster-recovery validation, and the
+  release checklist.
+
+v1.0 is portfolio/demo ready. The production-readiness guide deliberately separates
+implemented controls from the additional evidence and safeguards required for an
+internet-facing service.
 
 ## Quick start with Docker Compose
 
@@ -102,6 +115,7 @@ alongside it automatically.
 Inside the container, start the API:
 
 ```bash
+alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -133,11 +147,25 @@ python -m venv .venv
 python -m pip install -r requirements-dev.txt
 $env:APP_API_KEY = "generate-a-private-key-at-least-32-characters"
 $env:DATABASE_URL = "sqlite:///./tasks.db"
+alembic upgrade head
 ruff check .
 ruff format --check .
 pytest
 uvicorn app.main:app --reload
 ```
+
+Schema changes are managed with Alembic; the application never creates tables at
+runtime. After changing SQLAlchemy models, generate and review a revision, then
+apply it:
+
+```powershell
+alembic revision --autogenerate -m "describe the schema change"
+alembic upgrade head
+```
+
+Docker Compose runs a one-shot `migrate` service before the API starts. Kubernetes
+API pods run the same upgrade in an init container. PostgreSQL migrations take an
+advisory lock, so rolling deployments and multiple replicas serialize upgrades.
 
 ## Local Kubernetes with kind
 

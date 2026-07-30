@@ -38,6 +38,26 @@ def test_validation_and_missing_tasks(client):
     assert client.patch("/tasks/999", json={"completed": True}).status_code == 404
     assert client.delete("/tasks/999").status_code == 404
     assert client.get("/tasks", params={"limit": 101}).status_code == 422
+    assert client.get("/tasks", params={"search": ""}).status_code == 422
+
+
+def test_task_filters(client):
+    client.post("/tasks", json={"title": "Ship Docker image"})
+    completed = client.post("/tasks", json={"title": "Write release notes"}).json()
+    client.post("/tasks", json={"title": "Review 100% coverage"})
+    client.patch(f"/tasks/{completed['id']}", json={"completed": True})
+
+    pending = client.get("/tasks", params={"completed": False})
+    assert [task["title"] for task in pending.json()] == [
+        "Ship Docker image",
+        "Review 100% coverage",
+    ]
+
+    searched = client.get("/tasks", params={"search": "release"})
+    assert [task["title"] for task in searched.json()] == ["Write release notes"]
+
+    literal_wildcard = client.get("/tasks", params={"search": "100%"})
+    assert [task["title"] for task in literal_wildcard.json()] == ["Review 100% coverage"]
 
 
 def test_dashboard_info_and_metrics(client):

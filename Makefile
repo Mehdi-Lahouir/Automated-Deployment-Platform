@@ -1,4 +1,4 @@
-.PHONY: install lint test compose-up compose-down build backup-image backup-local backup-s3 restore-local demo-traffic alert-trigger alert-recover k8s-validate
+.PHONY: install lint test load-test migrate migration compose-up compose-down build backup-image backup-local backup-s3 restore-local demo-traffic alert-trigger alert-recover k8s-validate
 
 install:
 	python -m pip install -r requirements-dev.txt
@@ -9,6 +9,15 @@ lint:
 
 test:
 	pytest
+
+load-test:
+	k6 run scripts/load-test.js
+
+migrate:
+	alembic upgrade head
+
+migration:
+	alembic revision --autogenerate -m "$(message)"
 
 compose-up:
 	docker compose up --build -d

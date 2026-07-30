@@ -89,6 +89,21 @@
           <span id="task-summary" class="task-summary">Loading tasks…</span>
         </div>
 
+        <div class="task-filters" aria-label="Filter tasks">
+          <label>
+            <span class="sr-only">Search tasks</span>
+            <input id="task-search" type="search" placeholder="Search tasks…" autocomplete="off">
+          </label>
+          <label>
+            <span class="sr-only">Filter by status</span>
+            <select id="status-filter">
+              <option value="all">All tasks</option>
+              <option value="pending">In progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </label>
+        </div>
+
         <form id="task-form" class="task-form">
           <label class="sr-only" for="task-title">New task title</label>
           <div class="input-wrap">

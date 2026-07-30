@@ -17,6 +17,8 @@ const elements = {
   apiKey: document.querySelector("#api-key"),
   authError: document.querySelector("#auth-error"),
   logout: document.querySelector("#logout-button"),
+  search: document.querySelector("#task-search"),
+  statusFilter: document.querySelector("#status-filter"),
 };
 
 let tasks = [];
@@ -146,10 +148,27 @@ function createTaskElement(task) {
 }
 
 function renderTasks() {
-  elements.list.replaceChildren(...tasks.map(createTaskElement));
+  const search = elements.search.value.trim().toLocaleLowerCase();
+  const status = elements.statusFilter.value;
+  const visibleTasks = tasks.filter((task) => {
+    const matchesSearch = task.title.toLocaleLowerCase().includes(search);
+    const matchesStatus =
+      status === "all" ||
+      (status === "completed" && task.completed) ||
+      (status === "pending" && !task.completed);
+    return matchesSearch && matchesStatus;
+  });
+
+  elements.list.replaceChildren(...visibleTasks.map(createTaskElement));
   elements.loading.hidden = true;
   elements.error.hidden = true;
-  elements.empty.hidden = tasks.length !== 0;
+  elements.empty.hidden = visibleTasks.length !== 0;
+  elements.empty.querySelector("strong").textContent =
+    tasks.length === 0 ? "Your queue is clear" : "No matching tasks";
+  elements.empty.querySelector("p").textContent =
+    tasks.length === 0
+      ? "Add your first task above and start building momentum."
+      : "Try another search or status filter.";
   updateStats();
 }
 
@@ -219,10 +238,8 @@ async function deleteTask(task, item, button) {
   button.disabled = true;
   try {
     await apiRequest(`/tasks/${task.id}`, { method: "DELETE" });
-    item.remove();
     tasks = tasks.filter((current) => current.id !== task.id);
-    elements.empty.hidden = tasks.length !== 0;
-    updateStats();
+    renderTasks();
     showToast("Task removed.");
   } catch (error) {
     button.disabled = false;
@@ -234,6 +251,8 @@ elements.form.addEventListener("submit", addTask);
 elements.retry.addEventListener("click", loadTasks);
 elements.authForm.addEventListener("submit", unlockWorkspace);
 elements.logout.addEventListener("click", lockWorkspace);
+elements.search.addEventListener("input", renderTasks);
+elements.statusFilter.addEventListener("change", renderTasks);
 
 if (apiKey) {
   elements.authOverlay.hidden = true;

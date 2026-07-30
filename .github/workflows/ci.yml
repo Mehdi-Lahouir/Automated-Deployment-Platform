@@ -21,6 +21,10 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest
+      - name: Install browser for end-to-end test
+        run: python -m playwright install --with-deps chromium
+      - name: Run browser smoke test
+        run: pytest e2e_tests --no-cov
       - run: pip-audit -r requirements.txt
       - run: shellcheck backup/*.sh
       - name: Validate PowerShell scripts
