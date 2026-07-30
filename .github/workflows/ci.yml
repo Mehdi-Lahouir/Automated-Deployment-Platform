@@ -93,10 +93,11 @@ jobs:
             docker compose logs --no-color
             exit 1
           fi
-          curl --fail --silent \
-            -H 'X-Request-ID: ci-observability-smoke' \
-            http://127.0.0.1:8000/health/live >/dev/null
+          logs=""
           for attempt in $(seq 1 30); do
+            curl --fail --silent \
+              -H 'X-Request-ID: ci-observability-smoke' \
+              http://127.0.0.1:8000/health/live >/dev/null
             logs="$(docker run --rm --network task-manager_default \
               curlimages/curl:8.14.1 --silent --get \
               --data-urlencode 'query={log_service="task-api"} |= "ci-observability-smoke"' \
@@ -106,11 +107,20 @@ jobs:
             fi
             sleep 2
           done
-          echo "$logs" | grep -q ci-observability-smoke
-          curl --fail --silent \
+          if ! echo "$logs" | grep -q ci-observability-smoke; then
+            echo "Loki did not receive the correlated API log. Last response: $logs"
+            docker compose logs --no-color api alloy loki docker-socket-proxy
+            exit 1
+          fi
+          alert_rules="$(curl --fail --silent \
             --user admin:validation-only-password \
-            http://127.0.0.1:3000/api/v1/provisioning/alert-rules |
-            grep -q task-api-unavailable
+            http://127.0.0.1:3000/api/v1/provisioning/alert-rules)"
+          if ! echo "$alert_rules" | grep -q task-api-unavailable; then
+            echo "Grafana alert rule task-api-unavailable was not provisioned."
+            echo "$alert_rules"
+            docker compose logs --no-color grafana
+            exit 1
+          fi
           ! docker compose logs --no-color grafana |
             grep -Eiq 'failed to provision|error.*provision'
       - name: Stop observability smoke stack
